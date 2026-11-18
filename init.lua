@@ -110,7 +110,7 @@ do
   vim.o.number = true
   -- You can also add relative line numbers, to help with jumping.
   --  Experiment for yourself to see if you like it!
-  -- vim.o.relativenumber = true
+  vim.o.relativenumber = true
 
   -- Enable mouse mode, can be useful for resizing splits for example!
   vim.o.mouse = 'a'
@@ -158,6 +158,12 @@ do
   vim.o.list = true
   vim.opt.listchars = { tab = '» ', trail = '·', nbsp = '␣' }
 
+  -- Visual Guide wrapping
+  -- vim.opt.colorcolumn = "80"
+
+  -- Wrap to the next line
+  vim.opt.wrap = false
+
   -- Preview substitutions live, as you type!
   vim.o.inccommand = 'split'
 
@@ -171,6 +177,26 @@ do
   -- instead raise a dialog asking if you wish to save the current file(s)
   -- See `:help 'confirm'`
   vim.o.confirm = true
+
+  -- how many columns a literal tab renders as
+  vim.opt.tabstop = 4
+
+  -- how many spaces one indent level uses (>>, autoindent)
+  vim.opt.shiftwidth = 4
+
+  -- Tab inserts spaces instead of a real tab character
+  vim.opt.expandtab = true
+
+  -- Tab/Backspace treat 4 spaces as one unit
+  vim.opt.softtabstop = 4
+
+  -- Prevents neovim from changing the cursor shape, and lets the terminal change it instead
+  vim.opt.guicursor = ''
+
+  -- Adds diagnostics to the left side of the column
+  vim.opt.signcolumn = "yes"
+
+
 end
 
 -- ============================================================
@@ -194,8 +220,8 @@ do
     underline = { severity = { min = vim.diagnostic.severity.WARN } },
 
     -- Can switch between these as you prefer
-    virtual_text = true, -- Text shows up at the end of the line
-    virtual_lines = false, -- Text shows up underneath the line, with virtual lines
+    virtual_text = false, -- Text shows up at the end of the line
+    virtual_lines = true, -- Text shows up underneath the line, with virtual lines
 
     -- Auto open the float, so you can easily read the errors when jumping with `[d` and `]d`
     jump = {
@@ -234,6 +260,9 @@ do
   vim.keymap.set('n', '<C-j>', '<C-w><C-j>', { desc = 'Move focus to the lower window' })
   vim.keymap.set('n', '<C-k>', '<C-w><C-k>', { desc = 'Move focus to the upper window' })
 
+  -- Personal keymaps live in `lua/keymaps.lua`
+  require 'keymaps'
+
   -- NOTE: Some terminals have colliding keymaps or are not able to send distinct keycodes
   -- vim.keymap.set("n", "<C-S-h>", "<C-w>H", { desc = "Move window to the left" })
   -- vim.keymap.set("n", "<C-S-l>", "<C-w>L", { desc = "Move window to the right" })
@@ -251,6 +280,16 @@ do
     group = vim.api.nvim_create_augroup('kickstart-highlight-yank', { clear = true }),
     callback = function() vim.hl.on_yank() end,
   })
+
+  -- Replaces selected text without losing what you yanked
+  vim.keymap.set("x", "p", [["_d"]], { desc = "Paste over selection without losing yanked text"})
+
+  -- Delete text without saving it to any register
+  vim.keymap.set({ "n", "v" }, "<leader>d", [["_d]], { desc = "Delete without yanking"})
+
+  vim.keymap.set("i", "<C-c>", "<Esc>")
+  vim.keymap.set("n", "<C-c>", ":nohl<CR>", { desc = "Clear search highlighting", silent = true })
+
 end
 
 -- ============================================================
@@ -346,6 +385,24 @@ do
   vim.pack.add { gh 'NMAC427/guess-indent.nvim' }
   require('guess-indent').setup {}
 
+  -- RENDERING MARKDOWN
+  vim.pack.add({
+    { src = "https://github.com/MeanderingProgrammer/render-markdown.nvim" },
+  })
+    require('render-markdown').setup({
+  heading = { icons = {} },
+  checkbox = { enabled = false },
+  })
+
+  -- DISABLING LINTER FOR MARKDOWN
+  vim.api.nvim_create_autocmd("FileType", {
+    pattern = { "markdown" },
+    callback = function(args)
+      vim.diagnostic.enable(false, { bufnr = args.buf })
+    end,
+  })
+
+
   -- Here is a more advanced configuration example that passes options to `gitsigns.nvim`
   --
   -- See `:help gitsigns` to understand what each configuration key does.
@@ -397,7 +454,7 @@ do
 
   -- Highlight todo, notes, etc in comments
   vim.pack.add { gh 'folke/todo-comments.nvim' }
-  require('todo-comments').setup { signs = false }
+  require('todo-comments').setup { signs = vim.g.have_nerd_font }
 
   -- [[ mini.nvim ]]
   --  A collection of various small independent plugins/modules
@@ -432,6 +489,13 @@ do
   -- - sr)'  - [S]urround [R]eplace [)] [']
   require('mini.surround').setup()
 
+  -- Align text into columns.
+  --
+  -- - gaip<space> - [G]o [A]lign [I]nner [P]aragraph on whitespace
+  -- - gaip=       - align on '=' (struct initialisers, assignments)
+  -- - Press <CR> during the interactive session to preview modifiers.
+  require('mini.align').setup()
+
   -- Simple and easy statusline.
   --  You could remove this setup call if you don't like it,
   --  and try some other statusline plugin
@@ -447,6 +511,12 @@ do
 
   -- ... and there is more!
   --  Check out: https://github.com/nvim-mini/mini.nvim
+  vim.api.nvim_create_autocmd("FileType", {
+    pattern = { "c", "cpp" },
+    callback = function()
+    vim.opt_local.indentkeys:remove(":")
+    end,
+  })
 end
 
 -- ============================================================
@@ -692,7 +762,11 @@ do
   --  See `:help lsp-config` for information about keys and how to configure
   ---@type table<string, vim.lsp.Config>
   local servers = {
-    -- clangd = {},
+    clangd = {
+      -- --clang-tidy folds clang-tidy diagnostics into the LSP, so C/C++ linting
+      -- needs no separate nvim-lint linter.
+      cmd = { 'clangd', '--background-index', '--clang-tidy', '--header-insertion=iwyu' },
+    },
     -- gopls = {},
     -- pyright = {},
     -- rust_analyzer = {},
@@ -702,6 +776,10 @@ do
     --
     -- But for many setups, the LSP (`ts_ls`) will work just fine
     -- ts_ls = {},
+
+    emmet_language_server = {
+      filetypes = { 'html', 'css', 'javascriptreact', 'typescriptreact' },
+    },
 
     stylua = {}, -- Used to format Lua code
 
@@ -796,6 +874,8 @@ do
     },
     -- You can also specify external formatters in here.
     formatters_by_ft = {
+      c = { 'clang_format' },
+      cpp = { 'clang_format' },
       -- rust = { 'rustfmt' },
       -- Conform can also run multiple formatters sequentially
       -- python = { "isort", "black" },
@@ -804,6 +884,21 @@ do
       -- javascript = { "prettierd", "prettier", stop_after_first = true },
     },
   }
+
+  -- clang-format ships with Xcode and Homebrew LLVM but neither puts it on PATH,
+  -- so fall back to the known install locations before giving up on it.
+  if vim.fn.executable 'clang-format' == 0 then
+    for _, candidate in ipairs {
+      '/opt/homebrew/opt/llvm/bin/clang-format',
+      '/usr/local/opt/llvm/bin/clang-format',
+      '/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/clang-format',
+    } do
+      if vim.uv.fs_stat(candidate) then
+        require('conform').formatters.clang_format = { command = candidate }
+        break
+      end
+    end
+  end
 
   vim.keymap.set({ 'n', 'v' }, '<leader>f', function() require('conform').format { async = true } end, { desc = '[F]ormat buffer' })
 end
@@ -904,7 +999,7 @@ do
   vim.pack.add { { src = gh 'nvim-treesitter/nvim-treesitter', version = 'main' } }
 
   -- Ensure basic parsers are installed
-  local parsers = { 'bash', 'c', 'diff', 'html', 'lua', 'luadoc', 'markdown', 'markdown_inline', 'query', 'vim', 'vimdoc' }
+  local parsers = { 'bash', 'c', 'cpp', 'diff', 'html', 'lua', 'luadoc', 'markdown', 'markdown_inline', 'query', 'vim', 'vimdoc' }
   require('nvim-treesitter').install(parsers)
 
   ---@param buf integer
@@ -966,17 +1061,17 @@ do
   --  Here are some example plugins that I've included in the Kickstart repository.
   --  Uncomment any of the lines below to enable them (you will need to restart nvim).
   --
-  -- require 'kickstart.plugins.debug'
-  -- require 'kickstart.plugins.indent_line'
-  -- require 'kickstart.plugins.lint'
-  -- require 'kickstart.plugins.autopairs'
-  -- require 'kickstart.plugins.neo-tree'
-  -- require 'kickstart.plugins.gitsigns' -- adds gitsigns recommended keymaps
+  require 'kickstart.plugins.debug'
+  require 'kickstart.plugins.indent_line'
+  require 'kickstart.plugins.lint'
+  require 'kickstart.plugins.autopairs'
+  require 'kickstart.plugins.neo-tree'
+  require 'kickstart.plugins.gitsigns' -- adds gitsigns recommended keymaps
 
   -- NOTE: You can add your own plugins, configuration, etc from `lua/custom/plugins/*.lua`
   --
   --  Uncomment the following line and add your plugins to `lua/custom/plugins/*.lua` to get going.
-  -- require 'custom.plugins'
+  require 'custom.plugins'
 end
 
 -- The line beneath this is called `modeline`. See `:help modeline`

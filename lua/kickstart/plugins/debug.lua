@@ -42,6 +42,8 @@ require('mason-nvim-dap').setup {
   ensure_installed = {
     -- Update this to ensure that you have the debuggers for the langs you want
     'delve',
+    -- C/C++/Rust. lldb-based, which is what you want on Apple silicon (no gdb).
+    'codelldb',
   },
 }
 
@@ -93,3 +95,22 @@ require('dap-go').setup {
     detached = vim.fn.has 'win32' == 0,
   },
 }
+
+-- Install C/C++ specific config.
+-- mason-nvim-dap registers the `codelldb` adapter for us (see `handlers` above);
+-- these are just the launch configurations that show up when you hit <F5> in a
+-- C or C++ buffer. Build first -- the debugger runs an existing binary.
+local codelldb_configurations = {
+  {
+    name = 'Launch executable',
+    type = 'codelldb',
+    request = 'launch',
+    program = function() return vim.fn.input('Path to executable: ', vim.fn.getcwd() .. '/', 'file') end,
+    cwd = '${workspaceFolder}',
+    stopOnEntry = false,
+    args = {},
+  },
+}
+
+dap.configurations.c = codelldb_configurations
+dap.configurations.cpp = codelldb_configurations
